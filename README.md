@@ -1,2 +1,2 @@
 # Capstone-Project2
-Part of the Google Analytics Course
+As part of a Google Analytics Course

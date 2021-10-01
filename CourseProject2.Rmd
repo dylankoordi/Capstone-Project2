@@ -1,0 +1,107 @@
+---
+title: "Capstone2"
+author: "Dylan Koordi"
+date: "9/30/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Associated Packages Used:
+```{r, echo= FALSE,include=FALSE}
+library(tidyverse)
+```
+
+### Read in the data
+```{r, echo=FALSE}
+daily_activity <- read.csv("~/Desktop/Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv")
+daily_weight <- read.csv("~/Desktop/Fitabase Data 4.12.16-5.12.16/weightLogInfo_merged.csv")
+```
+
+Initial observation of data shows that there exists 940 observations consisting of 15 variables.
+```{r,echo=FALSE, results='hide'}
+head(daily_activity)
+```
+
+
+```{r,echo=FALSE,warning=FALSE}
+#Summary of plots in terms of average steps and average calories
+average_calories <- daily_activity %>%
+  group_by(Id) %>% summarise(Avg_Steps = round(mean(TotalSteps),2), Avg_Calories = round(mean(Calories),2))
+
+#Relationship between Average_Srteps and Average Calories
+rd1 <- average_calories %>% arrange(desc(Avg_Calories)) 
+
+#Plot for the relationships
+ggplot(rd1, aes(x=Avg_Steps, y=Avg_Calories)) + geom_point() + geom_smooth(method='lm',se=FALSE) + labs(title="Plot showing the relationship between Avg_Steps and Avg_Calories", subtitle= "Initial Data Exploration", caption="Made by Dylan Koordi") + annotate("rect", xmin=c(11800,15800), xmax=c(12500,16500), ymin=c(1700,3200) , ymax=c(2000,3500), alpha=0.2, color="blue", fill="blue")
+```
+
+Plot shows that there is not a clear relationship between the average steps and average calories. Namely, an individual's combine steps does not directly lead to a higher average calories burnt. The highlighted portion of the diagram reflects points that support the relationship by in true, the other highlighted point on the bottom of the diagram reflects otherwise.
+
+```{r,echo=FALSE, results='hide'}
+##plot to obtain combined minutes instead of grouping by (FarilyActiveMinutes....)
+rd3 <- daily_activity %>% group_by(Id) %>%
+  select(VeryActiveMinutes, FairlyActiveMinutes, LightlyActiveMinutes,SedentaryMinutes) %>% 
+  summarize(Total_Active_Minutes = sum(VeryActiveMinutes,FairlyActiveMinutes,LightlyActiveMinutes,SedentaryMinutes))
+total_table <- data.frame(average_calories,rd3) %>% filter(Avg_Steps > 5000) %>% mutate(Avg_active_minutes = Total_Active_Minutes / 4)
+total_table
+```
+
+
+If average steps and average calories does not have a direct relationship, does average calories and total time spent have any relation?
+
+
+```{r,echo=FALSE}
+## Plot for the total_active_minutes vs others
+ggplot(total_table, aes(x=Avg_active_minutes, y= Avg_Calories, color= Avg_Steps)) + geom_point(size=2.5,shape=25) + labs(title="Relationship between total_minutes and avg_steps to average calories burnt", subtitle="Initial Data Exploration", caption = "Made by Dylan Koordi") 
+```
+
+There is some association between active minutes and average calories burned. Namely the plot shows that for every increase in active minutes on the app, the greater the number of average calories burnt. While the trend is generally upward sloping, there are also a lot of outliers which may indicate that while individuals were active on the app, they may not actually be burning calories (or doing anything).
+
+## Initial Data Exploration: Analyze Phase
+
+```{r,echo=FALSE}
+## Calculation for the CPM or Calories per total_active_minutes
+total_table <- total_table %>% mutate(CPM = Avg_Calories/Avg_active_minutes) %>% arrange(desc(CPM))
+test1 <- total_table %>% slice(1:20)
+ggplot(test1, aes(x=Id, y=CPM, color=Avg_Steps)) + geom_count(shape=23) 
+```
+
+If we observe the the CPM for each individual in the system, the result holds. The calories per minute has no significant association with the avg_steps of the individual. For reference, the light blue points refers to individuals that have walked the highest average number of steps but in turn, their CPM calculated are not as high as the number of those that have a smaller number of steps, denoted formally by the darker shades of blue on the diagram.
+
+```{r,echo=FALSE, results='hide'}
+daily_weight %>% select(Id, Date,WeightKg,WeightPounds,BMI) -> dw1
+dw2 <- dw1 %>% group_by(Id) %>% select(BMI, WeightKg) %>%
+  summarize(Avg_Weight=mean(round(WeightKg),2), Avg_BMI=mean(round(BMI),2))
+dw2 %>% mutate(Classification = c('Normal','Overweight','Normal','Overweight','Overweight','Overweight','Normal','Overweight')) -> dw2
+```
+
+```{r,echo=FALSE,results='hide'}
+## Merging data for weight and data for calories burnt
+merged_data <- merge(total_table,dw2, by="Id")
+merged_data
+```
+
+```{r,echo=FALSE}
+#Do overweight individuals tend to burn more fat than a normal weighted individual?
+
+#Plot1: Comparing CPM to Avg_BMI
+ggplot(merged_data, aes(x=Avg_BMI, y= CPM, color=Classification)) + geom_point(size=2.5) + labs(title="Evidence showing overweight has higher CPM than normal weighted individuals", subtitle = "Analysis", caption = "Made by Dylan Koordi")
+```
+
+
+```{r,echo=FALSE}
+## Are overweighted individuals walking more than normal individuals?
+ggplot(merged_data, aes(x=Avg_BMI, y= Avg_Steps, color=Classification)) + geom_line() + labs(title="Lack of evidence supporting walking theory", subtitle = "Analysis", caption = "Made by Dylan Koordi") + geom_text(aes(y=12500, x=23), label="Best for Normal", color="red") + geom_text(aes(y=16500,x=26, label="Best for Overweight")) 
+```
+Plot shows that there does not exist any evidence supporting the claim that individuals that are classified as overweight are clearly walking more than those that are not. 
+
+```{r,echo=FALSE}
+## average use of device (minutes) by weight classification
+ggplot(merged_data,aes(x=Classification, y=Avg_active_minutes,fill=CPM)) + geom_col()
+```
+
+Evidence shows that overweight individuals are actually using the app much more than those that are classified as normal. By virtue of the same experience, those that are overweight are actually experiencing a better change in their lives with respect to the CPM indicator scales. THe lighter end of the spectrum (blue) indicates that the peak individual obtained a max CPM of 0.4 while being overweight. This clearly indicates that the marketing strategy can be changed to focus more on overweight individuals vs normal individuals. 
+

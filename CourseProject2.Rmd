@@ -1,0 +1,173 @@
+---
+output: pdf_document
+---
+ \begin{center}
+Google Analytics Certificate: Capstone Project 2 
+ \end{center}
+\noindent\rule{16.5cm}{0.4pt}
+\newline
+\begin{center}
+\LARGE{\textrm{Analysis into what factors affect the use of fitness app}}
+\newline
+\newline
+\normalsize{By Dylan Koordi} 
+\end{center}
+\bigskip
+\bigskip
+\Large\textbf{Abstract}
+\smallskip
+
+\small As part of an ongoing marketing campaign for virtual bike sharing company, Cyclistic, the aim of this report is to analyze the different factors that are key to converting casual riders to annual riders in the company. This project will place an emphasis on the off bicycle activity. Namely: calories burnt as a KPI as well as average minutes active on app as a key indicator. 
+
+\bigskip
+\bigskip
+
+\tableofcontents
+\normalsize
+\break
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r, echo= FALSE,include=FALSE}
+library(tidyverse)
+```
+
+## Read in the data
+```{r, echo=FALSE}
+daily_activity <- read.csv("~/Desktop/Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv")
+daily_weight <- read.csv("~/Desktop/Fitabase Data 4.12.16-5.12.16/weightLogInfo_merged.csv")
+```
+
+Initial observation of data shows that there exists 940 observations consisting of 15 variables. Things to note when initially reading in the dataset, there are too many repeated variables that may not be of use in the analysis. For example, Total Distance and Tracker Distance reflects identical results, which may not be inherently useful for report. Another key observation is that there exists: VeryActiveDistance,ModeratelyActiveDistance,LightActiveDistance. For the scope of this report, the categorization into the 3 may not be effective, as such, part of the transformation and cleaning process would be the remove all repeated variables while also combining and taking subsequent sums or averages of key variables to provide a more accurate analysis.
+
+```{r,echo=FALSE}
+head(daily_activity)
+```
+## Data Cleaning and Transformation
+
+### Data to obtain average steps and average calories: Duplicate Id entries
+```{r,echo=FALSE}
+#Summary of plots in terms of average steps and average calories
+average_calories <- daily_activity %>%
+  group_by(Id) %>% summarise(Avg_Steps = round(mean(TotalSteps),2), Avg_Calories = round(mean(Calories),2))
+
+#Relationship between Average_Steps and Average Calories
+rd1 <- average_calories %>% arrange(desc(Avg_Calories)) 
+head(rd1)
+```
+
+### Initial data exploration: Is there a signficant relationship between Avg_Calories and Avg_Steps?
+```{r,echo=FALSE}
+#Plot for the relationships
+ggplot(rd1, aes(x=Avg_Steps, y=Avg_Calories)) + geom_point() + geom_smooth(method='lm',se=FALSE) + labs(title="Plot showing the relationship between Avg_Steps and Avg_Calories", subtitle= "Initial Data Exploration", caption="Made by Dylan Koordi") + annotate("rect", xmin=c(11800,15800), xmax=c(12500,16500), ymin=c(1700,3200) , ymax=c(2000,3500), alpha=0.2, color="blue", fill="blue")
+```
+
+There's a saying that the more steps you take, logically, the more calories you burn because the increased steps taken constitutes a greater amount of time where the body is actively working. But contrary to that theory, our plot shows that there is not a clear relationship between the average steps and average calories. Namely, an individual's combine steps does not directly lead to a higher average calories burnt. The highlighted portion of the diagram reflects points that support the relationship by in true, the other highlighted point on the bottom of the diagram reflects otherwise.
+
+### Another transformation applied to combine the 3 categories of Minutes together.
+```{r,echo=FALSE}
+##plot to obtain combined minutes instead of grouping by (FarilyActiveMinutes....)
+rd3 <- daily_activity %>% group_by(Id) %>%
+  select(VeryActiveMinutes, FairlyActiveMinutes, LightlyActiveMinutes,SedentaryMinutes) %>% 
+  summarize(Total_Active_Minutes = sum(VeryActiveMinutes,FairlyActiveMinutes,LightlyActiveMinutes,SedentaryMinutes))
+total_table <- data.frame(average_calories,rd3) %>% filter(Avg_Steps > 5000) %>% mutate(Avg_active_minutes = Total_Active_Minutes / 4)
+head(total_table)
+```
+This transformation combines the three categories of minutes into one, "Total_Active_Minutes" which essentially sums the time across the 3 categories. Beyond that, the duplicate entries for Id was also further accounted for. Hereby, the table reflects the summary for each user by virtue of the new transformed variables. As an added precaution, I also filtered individuals who have taken more than 5000 steps, the reason being that users who do not accumulate more than 5000 steps to date, are not representative of the sample for analysis.
+
+
+At this point, the initial data exploration shows that, if average steps and average calories does not have a direct relationship, does average calories and total time spent have any relation?
+
+### A plot highlighting the significance of average time spent against average calories burnt.
+```{r,echo=FALSE}
+## Plot for the total_active_minutes vs others
+ggplot(total_table, aes(x=Avg_active_minutes, y= Avg_Calories, color= Avg_Steps)) + geom_point(size=2.5,shape=25) + labs(title="Relationship between total_minutes and avg_steps to average calories burnt", subtitle="Initial Data Exploration", caption = "Made by Dylan Koordi") 
+```
+
+There is some association between active minutes and average calories burned. Namely the plot shows that for every increase in active minutes on the app, the greater the number of average calories burnt. While the trend is generally upward sloping, there are also a lot of outliers, which may indicate that while individuals were active on the app, they may not actually be burning calories (or doing anything).
+
+## Calculating a new metric: CPM
+
+CPM refers to the calories per minute. This is essentially the number of calories burnt over the duration of active minutes. Trivially, I incorporated this metric because it measures the efficiency of the individual. For example, an individual is not deemed as efficient if their CPM is low, because for the high amount of active minutes spent walking, they are not burning as many calories. Vise versa
+
+### Plot for Calories Per Minute by Individual
+```{r,echo=FALSE}
+## Calculation for the CPM or Calories per total_active_minutes
+total_table <- total_table %>% mutate(CPM = Avg_Calories/Avg_active_minutes) %>% arrange(desc(CPM))
+summary(total_table)
+```
+
+Useful statistic to observe from this summary, is that the mean CPM is valued at 0.2815 in the sample. This will be used to value invidiuals that are riding above or below the mean.
+
+```{r,echo=FALSE}
+total_table$CPM_val <- ifelse(total_table$CPM < 0.2815, "below", "above")  # above / below avg flag
+total_table$Id <- factor(total_table$Id, levels= total_table$Id)
+total_table <- total_table[order(total_table$CPM),]
+
+ggplot(total_table, aes(x=Id, y=CPM, label=CPM)) + 
+  geom_bar(stat='identity', aes(fill=CPM_val), width=.5)  +
+  scale_fill_manual(name="Classifaction of CPM", 
+                    labels = c("Above Average", "Below Average"), 
+                    values = c("above"="#00ba38", "below"="#f8766d")) + 
+  labs(subtitle="By virtue of Diverging Bars'", 
+       title= "CPM values of different users on Cyclistic") + 
+  coord_flip()
+```
+
+Key points of observation for the average user. The time spent on the app deemed as 'active' is not a good reference point for the KPI being calories burnt. We see that individuals who attain the highest level of CPM are usually the ones who spent the least amount of time on the app by virtue of the diagram above.
+
+Now that we have investigated the CPM, what about the different weight classes?
+
+## An investigation into which weight class uses the most?
+
+### Classification of riders according to their weight classes
+```{r,echo=FALSE}
+daily_weight %>% select(Id, Date,WeightKg,WeightPounds,BMI) -> dw1
+dw2 <- dw1 %>% group_by(Id) %>% select(BMI, WeightKg) %>%
+  summarize(Avg_Weight=mean(round(WeightKg),2), Avg_BMI=mean(round(BMI),2))
+dw2$classification <- ifelse(dw2$Avg_BMI <24.9, 'Healthy', 'Overweight') 
+dw2
+```
+
+As it turns out, a majority of the riders are deemed as overweight. For reference, the healthy BMI is anything that is <24.9, by virtue of that number, we obtain the following classifications above.
+
+## Merging data for more analysis
+```{r,echo=FALSE,results='hide'}
+## Merging data for weight and data for calories burnt
+merged_data <- merge(total_table,dw2, by="Id")
+merged_data
+```
+
+### Do overweight individuals tend to burn more fat than a normal weighted individual?
+```{r,echo=FALSE}
+#Plot1: Comparing CPM to Avg_BMI
+ggplot(merged_data, aes(x=classification, y= CPM, color=CPM_val)) + geom_point(size=2.5) + labs(title="Higher BMI = Higher Calories burned?", subtitle = "Analysis", caption = "Made by Dylan Koordi")
+```
+
+Surprisingly! Riders classified under overweight tend to have a higher CPM than riders that are deemed as healthy. Trivially, half of the individuals classified as overweight, actually have a CPM value that is above the average while in contrary, the CPM for the healthy riders are all below average. This is food for thought.
+
+### Are overweight individuals walking more than normal individuals?
+```{r,echo=FALSE}
+ggplot(merged_data, aes(x=classification, y=Avg_Steps,fill=CPM_val)) + 
+  geom_bar(stat="identity", width=.5) + 
+  labs(title="Are overweight individuals walking more than healthy individuals?", 
+       subtitle="Analysis", 
+       caption="By Dylan") + 
+  theme(axis.text.x = element_text(angle=360, vjust=0.6))
+```
+
+Coherently, overweight individuals are walking more on average than the healthy individuals. By virtue of the previous plot, the CPM of individuals who are above the average are indeed walking more. This incidentally explains why they are burning more calories over time.
+
+
+### But are the overweight individuals spending that much more time than the healthy individuals? 
+```{r,echo=FALSE}
+## average use of device (minutes) by weight classification
+ggplot(merged_data,aes(x=classification, y=Avg_active_minutes,fill=CPM)) + geom_col()
+```
+
+Coherently, there is some evidence suggesting that the overweight individuals are spending more time on the app. But, the big point to point out is that individuals who had the highest CPM actually were active on the app lesser than those that had the most time on the app. This further supports the theory that more minutes does not imply more weight loss/calories burnt.
+
+## Conclusion
+The recommendation is for cyclistic to offer more services targeting towards individuals that have a higher BMI or are deemed as 'overweight'. Supporting this claim was that overweight individuals tend to have a higher CPM value compared to individuals deemed as healthy. Another important insight was that the minutes active on the app does not actually correlate to the number of calories burnt. This could point out to the inconsistency of the individual use of the app. 
+
